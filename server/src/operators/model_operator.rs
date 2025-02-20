@@ -941,7 +941,7 @@ pub async fn cross_encoder(
 
                 let aimon_url = server_origin; 
                 let aimon_body = vec![AIMonRequestBody {
-                    task_definition: "Your task is to grade the relevance of context document(s) against a specified user query.".to_string(),
+                    task_definition: "Your task is to grade the relevance of context document(s) against the specified user query.".to_string(),
                     context: common_request_docs.clone(),
                     user_query: query.clone(),
                     config: AIMonConfig {
