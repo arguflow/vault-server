@@ -8,13 +8,14 @@ const {
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["selector", ".dark &"],
-  content: ["src/**/*.tsx"],
+  content: ["src/**/*.{tsx,ts}"],
   plugins: [
     plugin(function ({ addVariant }) {
       addVariant("inline", () => {
         // Actually selects any child of .tv-trieve-inline-model
         return `.trieve-inline-modal &`;
       });
+      addVariant("mobile-only", "@media screen and (max-width: 768px)");
     }),
     require("@tailwindcss/forms")({
       strategy: "class",
@@ -30,7 +31,7 @@ export default {
         ],
         {
           rootStyles: true,
-        }
+        },
       ),
     }),
   ],
