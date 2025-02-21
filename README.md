@@ -202,9 +202,16 @@ yarn dev
 After the cargo build has finished (after the `tmuxp load trieve`):
 - check that you can see redoc with the OpenAPI reference at [localhost:8090/redoc](http://localhost:8090/redoc)
 - make an account create a dataset with test data at [localhost:5173](http://localhost:5173)
-- to test the Cross Encoder rerankers in local dev, uncheck the `Fulltext Enabled` option in Dataset Options -> Additional Options.
 - search that dataset with test data at [localhost:5174](http://localhost:5174)
-- to test the Cross Encoder rerankers in local dev, use Type->Semantic in the search playground.
+
+### Additional Instructions for testing cross encoder reranking models
+
+To test the Cross Encoder rerankers in local dev, 
+- click on the dataset, go to the Dataset Settings -> Dataset Options -> Additional Options and uncheck the `Fulltext Enabled` option.
+- in the Embedding Settings, select your reranker model and enter the respective key in the adjacent textbox, and hit save.
+- in the search playground, set Type -> Semantic and select Rerank By -> Cross Encoder
+- if AIMon Reranker is selected in the Embedding Settings, you can enter an optional Task Definition in the search playground to specify the domain of context documents to the AIMon reranker.
+
 
 ### Debugging issues with local dev
 
