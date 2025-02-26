@@ -936,12 +936,11 @@ pub async fn cross_encoder(
         if server_origin != default_server_origin {
             let reranker_model_name = dataset_config.RERANKER_MODEL_NAME.clone();
             if reranker_model_name == "aimon-rerank" {
-                
+
                 // --- AIMon Integration for small batch ---
 
-                let aimon_url = server_origin; 
+                let aimon_url = server_origin;
                 let aimon_body = vec![AIMonRequestBody {
-                    // task_definition: "Your task is to grade the relevance of context document(s) against the specified user query.".to_string(),
                     task_definition: dataset_config.TASK_DEFINITION.clone(),
                     context: common_request_docs.clone(),
                     user_query: query.clone(),
@@ -965,13 +964,17 @@ pub async fn cross_encoder(
                             err
                         ))
                     })?;
-
-                let aimon_response: Vec<AIMonResponseBody> = resp.into_json().map_err(|err| {
-                    ServiceError::BadRequest(format!("Failed parsing AIMon response: {:?}", err))
-                })?;
-
+                let aimon_response: Vec<AIMonResponseBody> =
+                    resp.into_json().map_err(|err| {
+                        ServiceError::BadRequest(format!(
+                            "Failed parsing AIMon response: {:?}",
+                            err
+                        ))
+                    })?;
                 // Assume the first element’s first inner vector holds the scores.
-                if let Some(relevance) = aimon_response.get(0).and_then(|r| r.retrieval_relevance.as_ref()) {
+                if let Some(relevance) =
+                    aimon_response.get(0).and_then(|r| r.retrieval_relevance.as_ref())
+                {
                     if let Some(scores) = relevance.get(0) {
                         for (i, score) in scores.iter().enumerate() {
                             if let Some(result) = results.get_mut(i) {
@@ -981,20 +984,18 @@ pub async fn cross_encoder(
                     }
                 }
             } else {
-                    // Assume cohere integration for small batch.
-                    let resp = ureq::AgentBuilder::new()
+                // Assume Cohere integration for small batch.
+                let resp = ureq::AgentBuilder::new()
                     .tls_connector(Arc::new(native_tls::TlsConnector::new().map_err(|_| {
-                            ServiceError::InternalServerError(
-                                "Failed to acquire tls connection".to_string(),
-                            )
-                        })?))
+                        ServiceError::InternalServerError(
+                            "Failed to acquire tls connection".to_string(),
+                        )
+                    })?))
+                    .timeout(std::time::Duration::from_secs(5))
                     .build()
                     .post(&embedding_server_call)
                     .set("Content-Type", "application/json")
-                    .set(
-                        "Authorization", 
-                        &format!("Bearer {}", reranker_api_key.clone()),
-                    )
+                    .set("Authorization", &format!("Bearer {}", reranker_api_key.clone()))
                     .send_json(CohereRerankCall {
                         model: reranker_model_name.clone(),
                         query: query.clone(),
@@ -1006,14 +1007,13 @@ pub async fn cross_encoder(
                     .into_json::<CohereRerankResponse>()
                     .map_err(|_e| {
                         log::error!(
-                            "Failed parsing response from custom embedding server {:?}",
+                            "Failed parsing response from custom embedding server: {:?}",
                             _e
                         );
                         ServiceError::BadRequest(
                             "Failed parsing response from custom embedding server".to_string(),
                         )
                     })?;
-
                 resp.results.into_iter().for_each(|pair| {
                     results.index_mut(pair.index).score = pair.relevance_score as f64;
                 });
@@ -1021,17 +1021,15 @@ pub async fn cross_encoder(
         } else {
             let resp = ureq::AgentBuilder::new()
                 .tls_connector(Arc::new(native_tls::TlsConnector::new().map_err(|_| {
-                        ServiceError::InternalServerError(
-                            "Failed to acquire tls connection".to_string(),
-                        )
-                    })?))
+                    ServiceError::InternalServerError(
+                        "Failed to acquire tls connection".to_string(),
+                    )
+                })?))
+                .timeout(std::time::Duration::from_secs(5))
                 .build()
                 .post(&embedding_server_call)
                 .set("Content-Type", "application/json")
-                .set(
-                    "Authorization", 
-                    &format!("Bearer {}", reranker_api_key.clone()),
-                )
+                .set("Authorization", &format!("Bearer {}", reranker_api_key.clone()))
                 .send_json(CrossEncoderData {
                     query: query.clone(),
                     texts: common_request_docs.clone(),
@@ -1043,14 +1041,13 @@ pub async fn cross_encoder(
                 .into_json::<Vec<ScorePair>>()
                 .map_err(|_e| {
                     log::error!(
-                        "Failed parsing response from custom embedding server {:?}",
+                        "Failed parsing response from custom embedding server: {:?}",
                         _e
                     );
                     ServiceError::BadRequest(
                         "Failed parsing response from custom embedding server".to_string(),
                     )
                 })?;
-
             resp.into_iter().for_each(|pair| {
                 results.index_mut(pair.index).score = pair.score as f64;
             });
@@ -1072,23 +1069,19 @@ pub async fn cross_encoder(
                             let chunk = match x.metadata[0].clone() {
                                 ChunkMetadataTypes::Metadata(metadata) => Ok(metadata.clone()),
                                 _ => Err(ServiceError::BadRequest(
-                                    "ChunkMetadtaStringTagSet not found for chunk in results"
-                                        .to_string(),
+                                    "ChunkMetadtaStringTagSet not found for chunk in results".to_string(),
                                 )),
                             }?;
-
                             Ok(convert_html_to_text(
-                                &(chunk.chunk_html.unwrap_or_default()),
+                                &chunk.chunk_html.unwrap_or_default(),
                             ))
                         })
                         .collect::<Result<Vec<String>, ServiceError>>()?;
-
                     if server_origin != default_server_origin {
                         let reranker_model_name = dataset_config.RERANKER_MODEL_NAME.clone();
                         if reranker_model_name == "aimon-rerank" {
                             // --- AIMon Integration for larger chunks ---
                             let aimon_body = vec![AIMonRequestBody {
-                                // task_definition: "Your task is to grade the relevance of context document(s) against the specified user query.".to_string(),
                                 task_definition: dataset_config.TASK_DEFINITION.clone(),
                                 context: request_docs.clone(),
                                 user_query: query.clone(),
@@ -1098,7 +1091,6 @@ pub async fn cross_encoder(
                                     },
                                 },
                             }];
-
                             let resp = cur_client
                                 .post(&server_origin)
                                 .header("Authorization", format!("Bearer {}", reranker_api_key.clone()))
@@ -1108,16 +1100,17 @@ pub async fn cross_encoder(
                                 .await
                                 .map_err(|err| {
                                     ServiceError::BadRequest(format!(
-                                        "Failed making call to AIMon reranker: {:?}", err
+                                        "Failed making call to AIMon reranker: {:?}",
+                                        err
                                     ))
                                 })?;
-                            
-                            let aimon_response: Vec<AIMonResponseBody> = resp.json().await.map_err(|err| {
-                                ServiceError::BadRequest(format!(
-                                    "Failed parsing AIMon response: {:?}", err
-                                ))
-                            })?;
-                            
+                            let aimon_response: Vec<AIMonResponseBody> =
+                                resp.json().await.map_err(|err| {
+                                    ServiceError::BadRequest(format!(
+                                        "Failed parsing AIMon response: {:?}",
+                                        err
+                                    ))
+                                })?;
                             if let Some(relevance) =
                                 aimon_response.get(0).and_then(|r| r.retrieval_relevance.as_ref())
                             {
@@ -1135,7 +1128,6 @@ pub async fn cross_encoder(
                                 query: query.clone(),
                                 documents: request_docs.clone(),
                             };
-
                             let embeddings_resp = cur_client
                                 .post(&url)
                                 .header("Authorization", &format!("Bearer {}", reranker_api_key))
@@ -1156,18 +1148,16 @@ pub async fn cross_encoder(
                                         "Failed to get text from embeddings".to_string(),
                                     )
                                 })?;
-
-                            let rankings: CohereRerankResponse = serde_json::from_str(&embeddings_resp)
-                                .map_err(|e| {
+                            let rankings: CohereRerankResponse =
+                                serde_json::from_str(&embeddings_resp).map_err(|e| {
                                     log::error!(
-                                        "Failed to format response from embeddings server {:?}",
+                                        "Failed to format response from embeddings server: {:?}",
                                         e
                                     );
                                     ServiceError::InternalServerError(
                                         "Failed to format response from embeddings server".to_owned(),
                                     )
                                 })?;
-
                             rankings.results.into_iter().for_each(|pair| {
                                 docs_chunk.index_mut(pair.index).score = pair.relevance_score as f64;
                             });
@@ -1178,7 +1168,6 @@ pub async fn cross_encoder(
                             texts: request_docs.clone(),
                             truncate: true,
                         };
-
                         let embeddings_resp = cur_client
                             .post(&url)
                             .header("Authorization", &format!("Bearer {}", reranker_api_key))
@@ -1199,26 +1188,22 @@ pub async fn cross_encoder(
                                     "Failed to get text from embeddings".to_string(),
                                 )
                             })?;
-
                         let embeddings: Vec<ScorePair> = serde_json::from_str(&embeddings_resp)
                             .map_err(|e| {
                                 log::error!(
-                                    "Failed to format response from embeddings server {:?}",
+                                    "Failed to format response from embeddings server: {:?}",
                                     e
                                 );
                                 ServiceError::InternalServerError(
                                     "Failed to format response from embeddings server".to_owned(),
                                 )
                             })?;
-
                         embeddings.into_iter().for_each(|pair| {
                             docs_chunk.index_mut(pair.index).score = pair.score as f64;
                         });
                     }
-
                     Ok(())
                 };
-
                 vectors_resp
             })
             .collect();
@@ -1230,9 +1215,7 @@ pub async fn cross_encoder(
     }
 
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-
     results.truncate(page_size.try_into().unwrap());
-    
     Ok(results)
 }
 
