@@ -1,6 +1,6 @@
 import { AnalyticsParams, RequiredAnalyticsFilter } from "shared/types";
 import { SetStoreFunction } from "solid-js/store";
-import { DateRangePicker, Select } from "shared/ui";
+import { DateRangePicker, Select, RangePicker } from "shared/ui";
 import { toTitleCase } from "../utils/titleCase";
 import { subDays, subHours } from "date-fns";
 import { cn } from "shared/utils";
@@ -88,6 +88,18 @@ export const FilterBar = (props: FilterBarProps) => {
               })
             }
             options={ALL_SEARCH_TYPES}
+          />
+        </div>
+        <div>
+          <RangePicker
+            label={<div class="text-sm text-neutral-600">Query Rating</div>}
+            class="min-w-[200px] !bg-white"
+            onChange={(e) =>
+              props.setFilters("filter", {
+                ...props.filters.filter,
+                query_rating: e,
+              })
+            }
           />
         </div>
       </div>

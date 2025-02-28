@@ -158,7 +158,7 @@ export interface SetUserApiKeyResponse {
 }
 
 export const isComboboxValues = (
-  values: unknown,
+  values: unknown
 ): values is ComboboxSection[] => {
   if (!Array.isArray(values)) {
     return false;
@@ -461,15 +461,23 @@ export interface DateRangeFilter {
   lte?: Date;
 }
 
+export interface RangeFilter {
+  gt?: number;
+  lt?: number;
+  gte?: number;
+  lte?: number;
+}
+
 export interface AnalyticsFilter {
   date_range: DateRangeFilter;
   search_method?: "fulltext" | "hybrid" | "semantic";
   search_type?:
     | "search"
     | "autocomplete"
-    | "rag"
+    | "rag_chunks"
     | "search_over_groups"
     | "search_within_groups";
+  query_rating?: RangeFilter;
 }
 
 export interface RequiredAnalyticsFilter {
@@ -531,7 +539,7 @@ export interface ScoreChunkDTO {
 }
 
 export function isGroupScoreChunkDTO(
-  data: unknown,
+  data: unknown
 ): data is GroupScoreChunkDTO {
   if (typeof data !== "object" || data === null) {
     return false;
@@ -609,6 +617,7 @@ export interface RequiredRAGAnalyticsFilter {
 export interface RAGAnalyticsFilter {
   rag_type?: "chosen_chunks" | "all_chunks";
   date_range?: DateRangeFilter;
+  query_rating?: RangeFilter;
 }
 
 export interface EventAnalyticsFilter {
@@ -675,6 +684,22 @@ export interface QueryCountResponse {
 
 export interface HeadQueryResponse {
   queries: HeadQuery[];
+}
+
+export interface SearchMetricsResponse {
+  total_queries: number;
+  search_rps: number;
+  avg_latency: number;
+  p99: number;
+  p95: number;
+  p50: number;
+  percent_thumbs_up: number;
+  percent_thumbs_down: number;
+}
+
+export interface RagQueryRatingResponse {
+  percent_thumbs_up: number;
+  percent_thumbs_down: number;
 }
 
 export interface SearchQueryResponse {

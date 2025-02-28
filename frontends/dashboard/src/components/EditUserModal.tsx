@@ -40,6 +40,7 @@ export const EditUserModal = (props: InviteUserModalProps) => {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        "TR-Organization": userContext.selectedOrg().id,
       },
       body: JSON.stringify({
         organization_id: userContext.selectedOrg().id,
@@ -50,6 +51,11 @@ export const EditUserModal = (props: InviteUserModalProps) => {
       createEffect(() => {
         if (res.ok) {
           props.closeModal();
+          createToast({
+            title: "Success",
+            type: "success",
+            message: "User invited or role updated successfully!",
+          });
         } else {
           void res.json().then((data) => {
             createToast({

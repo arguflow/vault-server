@@ -1,6 +1,6 @@
 import { RAGAnalyticsFilter, RequiredRAGAnalyticsFilter } from "shared/types";
 import { SetStoreFunction } from "solid-js/store";
-import { DateRangePicker, Select } from "shared/ui";
+import { DateRangePicker, RangePicker, Select } from "shared/ui";
 import { toTitleCase } from "../utils/titleCase";
 import { subDays, subHours } from "date-fns";
 import { cn } from "shared/utils";
@@ -20,6 +20,20 @@ export const timeFrameOptions: RequiredRAGAnalyticsFilter["granularity"][] = [
   "minute",
   "second",
 ];
+
+export const getQueryRatingFilter = (option?: string) => {
+  if (option === "neutral" || option === undefined) {
+    return undefined;
+  } else if (option === "thumbs_up") {
+    return {
+      gte: 1,
+    };
+  } else if (option === "thumbs_down") {
+    return {
+      lt: 1,
+    };
+  }
+};
 
 export type DateRangeOption = {
   date: Date;
@@ -60,6 +74,13 @@ export const RAGFilterBar = (props: FilterBarProps) => {
               props.setFilters("rag_type", e === "all_chunks" ? undefined : e)
             }
             options={ALL_RAG_TYPES}
+          />
+        </div>
+        <div>
+          <RangePicker
+            label={<div class="text-sm text-neutral-600">Query Rating</div>}
+            class="min-w-[200px] !bg-white"
+            onChange={(e) => props.setFilters("query_rating", e)}
           />
         </div>
       </div>

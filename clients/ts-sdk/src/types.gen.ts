@@ -789,6 +789,10 @@ export type CreateMessageReqPayload = {
      */
     page_size?: (number) | null;
     /**
+     * If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. Queries that are entirely stop words will be preserved.
+     */
+    remove_stop_words?: (boolean) | null;
+    /**
      * Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
      */
     score_threshold?: (number) | null;
@@ -802,10 +806,15 @@ export type CreateMessageReqPayload = {
      * The ID of the topic to attach the message to.
      */
     topic_id: string;
+    typo_options?: ((TypoOptions) | null);
     /**
      * If use_group_search is set to true, the search will be conducted using the `search_over_groups` api. If not specified, this defaults to false.
      */
     use_group_search?: (boolean) | null;
+    /**
+     * If true, quoted and - prefixed words will be parsed from the queries and used as required and negated words respectively. Default is false.
+     */
+    use_quote_negated_terms?: (boolean) | null;
     /**
      * The user_id is the id of the user who is making the request. This is used to track user interactions with the RAG results.
      */
@@ -962,11 +971,33 @@ export type Dataset = {
 };
 
 export type DatasetAnalytics = {
+    /**
+     * Average latency of search queries
+     */
     avg_latency: number;
+    /**
+     * 50th percentile latency of search queries
+     */
     p50: number;
+    /**
+     * 95th percentile latency of search queries
+     */
     p95: number;
+    /**
+     * 99th percentile latency of search queries
+     */
     p99: number;
-    search_rps: number;
+    /**
+     * Total number of searches with a negative rating
+     */
+    total_negative_ratings: number;
+    /**
+     * Total number of searches with a positive rating
+     */
+    total_positive_ratings: number;
+    /**
+     * Total number of search queries
+     */
     total_queries: number;
 };
 
@@ -1201,6 +1232,10 @@ export type EditMessageReqPayload = {
      */
     page_size?: (number) | null;
     /**
+     * If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. Queries that are entirely stop words will be preserved.
+     */
+    remove_stop_words?: (boolean) | null;
+    /**
      * Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
      */
     score_threshold?: (number) | null;
@@ -1214,7 +1249,12 @@ export type EditMessageReqPayload = {
      * The id of the topic to edit the message at the given sort order for.
      */
     topic_id: string;
+    typo_options?: ((TypoOptions) | null);
     use_group_search?: (boolean) | null;
+    /**
+     * If true, quoted and - prefixed words will be parsed from the queries and used as required and negated words respectively. Default is false.
+     */
+    use_quote_negated_terms?: (boolean) | null;
     /**
      * The user_id is the id of the user who is making the request. This is used to track user interactions with the RAG results.
      */
@@ -1350,7 +1390,7 @@ export type EventTypes = {
      */
     user_id?: (string) | null;
 } | {
-    clicked_items: ChunkWithPosition;
+    clicked_items?: ((ChunkWithPosition) | null);
     /**
      * The name of the event
      */
@@ -2343,6 +2383,13 @@ export type QueryCountResponse = {
     total_queries: Array<SearchTypeCount>;
 };
 
+export type QueryRatingRange = {
+    gt?: (number) | null;
+    gte?: (number) | null;
+    lt?: (number) | null;
+    lte?: (number) | null;
+};
+
 /**
  * Query is the search query. This can be any string. The query will be used to create an embedding vector and/or SPLADE vector which will be used to find the result set.  You can either provide one query, or multiple with weights. Multi-query only works with Semantic Search and is not compatible with cross encoder re-ranking or highlights.
  */
@@ -2364,16 +2411,20 @@ export type RAGAnalytics = {
 } | {
     request_id: string;
     type: 'rag_query_details';
+} | {
+    filter?: ((RAGAnalyticsFilter) | null);
+    type: 'rag_query_ratings';
 };
 
 export type type3 = 'rag_queries';
 
 export type RAGAnalyticsFilter = {
     date_range?: ((DateRange) | null);
+    query_rating?: ((QueryRatingRange) | null);
     rag_type?: ((RagTypes) | null);
 };
 
-export type RAGAnalyticsResponse = RagQueryResponse | RAGUsageResponse | RAGUsageGraphResponse | RagQueryEvent;
+export type RAGAnalyticsResponse = RagQueryResponse | RAGUsageResponse | RAGUsageGraphResponse | RagQueryEvent | RagQueryRatingsResponse;
 
 export type RAGSortBy = 'hallucination_score' | 'top_score' | 'created_at' | 'latency';
 
@@ -2401,6 +2452,17 @@ export type RagQueryEvent = {
     user_message: string;
 };
 
+export type RagQueryRatingsResponse = {
+    /**
+     * Total number of negative RAG ratings
+     */
+    total_negative_ratings: number;
+    /**
+     * Total number of positive RAG ratings
+     */
+    total_positive_ratings: number;
+};
+
 export type RagQueryResponse = {
     queries: Array<RagQueryEvent>;
 };
@@ -2417,6 +2479,7 @@ export type Range = {
 export type RangeCondition = number;
 
 export type RateQueryRequest = {
+    metadata?: unknown;
     note?: (string) | null;
     query_id: string;
     rating: number;
@@ -2615,6 +2678,10 @@ export type RegenerateMessageReqPayload = {
      */
     page_size?: (number) | null;
     /**
+     * If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. Queries that are entirely stop words will be preserved.
+     */
+    remove_stop_words?: (boolean) | null;
+    /**
      * Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
      */
     score_threshold?: (number) | null;
@@ -2628,10 +2695,15 @@ export type RegenerateMessageReqPayload = {
      * The id of the topic to regenerate the last message for.
      */
     topic_id: string;
+    typo_options?: ((TypoOptions) | null);
     /**
      * If use_group_search is set to true, the search will be conducted using the `search_over_groups` api. If not specified, this defaults to false.
      */
     use_group_search?: (boolean) | null;
+    /**
+     * If true, quoted and - prefixed words will be parsed from the queries and used as required and negated words respectively. Default is false.
+     */
+    use_quote_negated_terms?: (boolean) | null;
     /**
      * The user_id is the id of the user who is making the request. This is used to track user interactions with the RAG results.
      */
@@ -2749,6 +2821,7 @@ export type type6 = 'latency_graph';
 
 export type SearchAnalyticsFilter = {
     date_range?: ((DateRange) | null);
+    query_rating?: ((QueryRatingRange) | null);
     search_method?: ((SearchMethod) | null);
     search_type?: ((SearchType) | null);
 };
@@ -2933,6 +3006,7 @@ export type SearchQueryEvent = {
 };
 
 export type SearchQueryRating = {
+    metadata?: unknown;
     note?: (string) | null;
     rating: number;
 };
@@ -3215,6 +3289,7 @@ export type SuggestedQueriesReqPayload = {
      */
     context?: (string) | null;
     filters?: ((ChunkFilter) | null);
+    is_followup?: (boolean) | null;
     /**
      * The query to base the generated suggested queries off of using RAG. A hybrid search for 10 chunks from your dataset using this query will be performed and the context of the chunks will be used to generate the suggested queries.
      */

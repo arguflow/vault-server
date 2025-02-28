@@ -23,6 +23,7 @@ import {
   searchWithTrieve,
   getPagefindIndex,
 } from "../trieve";
+import { InferenceFilterFormStep } from "../../TrieveModal/FilterSidebarComponents";
 
 export const ALL_TAG = {
   tag: "all",
@@ -59,6 +60,28 @@ export interface TagProp {
   iconClassName?: string;
   icon?: () => JSX.Element;
   description?: string;
+}
+
+export interface FilterSidebarSections {
+  key: string;
+  title: string;
+  selectionType: "single" | "multiple";
+  filterType: "match_any" | "match_all";
+  options: TagProp[];
+}
+
+export interface FilterSidebarProps {
+  sections: FilterSidebarSections[];
+}
+
+export interface InferenceFiltersFormProps {
+  steps: InferenceFilterFormStep[];
+}
+
+export interface SearchPageProps {
+  filterSidebarProps?: FilterSidebarProps;
+  inferenceFiltersFormProps?: InferenceFiltersFormProps;
+  display?: boolean;
 }
 
 export type ModalProps = {
@@ -108,18 +131,15 @@ export type ModalProps = {
     mode: SearchModes;
     removeListeners?: boolean;
   }[];
-  inline: boolean;
-  inlineCarousel: boolean;
+  inline?: boolean;
+  inlineCarousel?: boolean;
   zIndex?: number;
-  modalPosition?:
-  | "center"
-  | "right";
   showFloatingButton?: boolean;
   floatingButtonPosition?:
-  | "top-left"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-right";
+    | "top-left"
+    | "top-right"
+    | "bottom-left"
+    | "bottom-right";
   floatingSearchIconPosition?: "left" | "right";
   showFloatingSearchIcon?: boolean;
   disableFloatingSearchIconClick?: boolean;
@@ -135,6 +155,12 @@ export type ModalProps = {
   showResultHighlights?: boolean;
   initialAiMessage?: string;
   ignoreEventListeners?: boolean;
+  hideOverlay?: boolean;
+  hidePrice?: boolean;
+  hideChunkHtml?: boolean;
+  componentName?: string;
+  displayModal?: boolean;
+  searchPageProps?: SearchPageProps;
 };
 
 const defaultProps = {
@@ -168,9 +194,6 @@ const defaultProps = {
   responsive: false,
   zIndex: 1000,
   debounceMs: 0,
-  modalPosition: "center" as
-    | "center"
-    | "right",
   showFloatingButton: false,
   floatingButtonPosition: "bottom-right" as
     | "top-left"
@@ -193,6 +216,16 @@ const defaultProps = {
   showResultHighlights: true,
   initialAiMessage: undefined,
   ignoreEventListeners: false,
+  hideOverlay: false,
+  hidePrice: false,
+  hideChunkHtml: false,
+  componentName: "Trieve Search Component",
+  displayModal: true,
+  searchPageProps: {
+    filterSidebarProps: {
+      sections: [],
+    } as FilterSidebarProps,
+  } as SearchPageProps,
 } satisfies ModalProps;
 
 const ModalContext = createContext<{
@@ -229,6 +262,11 @@ const ModalContext = createContext<{
   pagefind?: PagefindApi;
   isRecording: boolean;
   setIsRecording: React.Dispatch<React.SetStateAction<boolean>>;
+  // sidebar filter specific state
+  selectedSidebarFilters: Record<string, string[]>; // hashmap where key is the section key and value are the selected labels
+  setSelectedSidebarFilters: React.Dispatch<
+    React.SetStateAction<Record<string, string[]>>
+  >;
 }>({
   props: defaultProps,
   trieveSDK: (() => {}) as unknown as TrieveSDK,
@@ -261,6 +299,9 @@ const ModalContext = createContext<{
   pagefind: null,
   isRecording: false,
   setIsRecording: () => {},
+  // sidebar filter specific state
+  selectedSidebarFilters: {},
+  setSelectedSidebarFilters: () => {},
 });
 
 const ModalProvider = ({
@@ -293,8 +334,10 @@ const ModalProvider = ({
     props.tags?.filter((t) => t.selected)
   );
   const [pagefind, setPagefind] = useState<PagefindApi | null>(null);
-
   const [currentGroup, setCurrentGroup] = useState<ChunkGroup | null>(null);
+  const [selectedSidebarFilters, setSelectedSidebarFilters] = useState<
+    Record<string, string[]>
+  >({});
 
   const trieve = new TrieveSDK({
     baseUrl: props.baseUrl,
@@ -540,6 +583,8 @@ const ModalProvider = ({
         tagCounts,
         isRecording,
         setIsRecording,
+        selectedSidebarFilters,
+        setSelectedSidebarFilters,
       }}
     >
       {children}

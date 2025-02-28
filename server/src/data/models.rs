@@ -1280,6 +1280,14 @@ impl ChunkMetadataTypes {
         }
     }
 
+    pub fn dataset_id(&self) -> Option<uuid::Uuid> {
+        match self {
+            ChunkMetadataTypes::Metadata(metadata) => Some(metadata.dataset_id),
+            ChunkMetadataTypes::ID(slim_metadata) => Some(slim_metadata.dataset_id),
+            ChunkMetadataTypes::Content(_) => None,
+        }
+    }
+
     pub fn qdrant_point_id(&self) -> uuid::Uuid {
         match self {
             ChunkMetadataTypes::Metadata(metadata) => metadata.qdrant_point_id,
@@ -4115,6 +4123,11 @@ impl ApiKeyRequestParams {
             context_options: payload.context_options,
             no_result_message: self.no_result_message.or(payload.no_result_message),
             only_include_docs_used: payload.only_include_docs_used,
+            use_quote_negated_terms: self
+                .use_quote_negated_terms
+                .or(payload.use_quote_negated_terms),
+            remove_stop_words: self.remove_stop_words.or(payload.remove_stop_words),
+            typo_options: self.typo_options.or(payload.typo_options),
         }
     }
 
@@ -5087,6 +5100,7 @@ impl FieldCondition {
 pub struct SearchQueryRating {
     pub rating: i32,
     pub note: Option<String>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema, Display)]
@@ -5773,11 +5787,30 @@ impl From<CountSearchMethod> for SearchMethod {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, Default)]
+#[schema(example = json!({
+    "gte": 1,
+    "lte": 1,
+    "gt": 1,
+    "lt": 1
+}))]
+pub struct QueryRatingRange {
+    // gte is the lower bound of the range. This is inclusive.
+    pub gte: Option<u32>,
+    // lte is the upper bound of the range. This is inclusive.
+    pub lte: Option<u32>,
+    // gt is the lower bound of the range. This is exclusive.
+    pub gt: Option<u32>,
+    // lt is the upper bound of the range. This is exclusive.
+    pub lt: Option<u32>,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 pub struct SearchAnalyticsFilter {
     pub date_range: Option<DateRange>,
     pub search_method: Option<SearchMethod>,
     pub search_type: Option<SearchType>,
+    pub query_rating: Option<QueryRatingRange>,
 }
 
 impl SearchAnalyticsFilter {
@@ -5805,6 +5838,33 @@ impl SearchAnalyticsFilter {
                 " AND JSONExtractString(request_params, 'search_type') = '{}'",
                 search_method
             ));
+        }
+
+        if let Some(query_rating) = &self.query_rating {
+            if let Some(gt) = &query_rating.gt {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') > {}",
+                    gt
+                ));
+            }
+            if let Some(lt) = &query_rating.lt {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') < {}",
+                    lt
+                ));
+            }
+            if let Some(gte) = &query_rating.gte {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') >= {}",
+                    gte
+                ));
+            }
+            if let Some(lte) = &query_rating.lte {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') <= {}",
+                    lte
+                ));
+            }
         }
 
         query_string
@@ -5860,6 +5920,7 @@ pub enum RagTypes {
 pub struct RAGAnalyticsFilter {
     pub date_range: Option<DateRange>,
     pub rag_type: Option<RagTypes>,
+    pub query_rating: Option<QueryRatingRange>,
 }
 
 impl RAGAnalyticsFilter {
@@ -5881,6 +5942,33 @@ impl RAGAnalyticsFilter {
 
         if let Some(rag_type) = &self.rag_type {
             query_string.push_str(&format!(" AND rag_type = '{}'", rag_type));
+        }
+
+        if let Some(query_rating) = &self.query_rating {
+            if let Some(gt) = &query_rating.gt {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') > {}",
+                    gt
+                ));
+            }
+            if let Some(lt) = &query_rating.lt {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') < {}",
+                    lt
+                ));
+            }
+            if let Some(gte) = &query_rating.gte {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') >= {}",
+                    gte
+                ));
+            }
+            if let Some(lte) = &query_rating.lte {
+                query_string.push_str(&format!(
+                    " AND JSONExtract(query_rating, 'rating', 'Nullable(Float64)') <= {}",
+                    lte
+                ));
+            }
         }
 
         query_string
@@ -5958,12 +6046,20 @@ impl RecommendationAnalyticsFilter {
 #[derive(Debug, Row, ToSchema, Serialize, Deserialize)]
 #[schema(title = "SearchMetricsResponse")]
 pub struct DatasetAnalytics {
-    pub total_queries: i32,
-    pub search_rps: f64,
+    /// Total number of search queries
+    pub total_queries: i64,
+    /// Average latency of search queries
     pub avg_latency: f64,
+    /// 99th percentile latency of search queries
     pub p99: f64,
+    /// 95th percentile latency of search queries
     pub p95: f64,
+    /// 50th percentile latency of search queries
     pub p50: f64,
+    /// Total number of searches with a positive rating
+    pub total_positive_ratings: f64,
+    /// Total number of searches with a negative rating
+    pub total_negative_ratings: f64,
 }
 
 #[derive(Debug, ToSchema, Row, Serialize, Deserialize)]
@@ -6167,7 +6263,7 @@ pub struct EventData {
     pub updated_at: String,
 }
 
-#[derive(Debug, ToSchema, Serialize, Deserialize, Row)]
+#[derive(Debug, ToSchema, Serialize, Deserialize, Row, Clone)]
 #[schema(example = json!({
     "event_type": "view",
     "event_name": "Viewed Home Page",
@@ -6838,6 +6934,9 @@ pub enum RAGAnalytics {
     #[schema(title = "QueryDetails")]
     #[serde(rename = "rag_query_details")]
     RAGQueryDetails { request_id: uuid::Uuid },
+    #[schema(title = "RAGQueryRatings")]
+    #[serde(rename = "rag_query_ratings")]
+    RAGQueryRatings { filter: Option<RAGAnalyticsFilter> },
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -6924,6 +7023,15 @@ pub struct RAGUsageGraphResponse {
     pub usage_points: Vec<UsageGraphPoint>,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema, Row)]
+#[schema(title = "RagQueryRatingsResponse")]
+pub struct RagQueryRatingsResponse {
+    /// Total number of positive RAG ratings
+    pub total_positive_ratings: i64,
+    /// Total number of negative RAG ratings
+    pub total_negative_ratings: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum SearchAnalyticsResponse {
@@ -6960,6 +7068,8 @@ pub enum RAGAnalyticsResponse {
     RAGUsageGraph(RAGUsageGraphResponse),
     #[schema(title = "RAGQueryDetails")]
     RAGQueryDetails(Box<RagQueryEvent>),
+    #[schema(title = "RAGQueryRatings")]
+    RAGQueryRatings(RagQueryRatingsResponse),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -7182,7 +7292,7 @@ pub enum EventTypes {
         /// The request id of the event to associate it with a request
         request: Option<RequestInfo>,
         /// The items that were clicked and their positons in a hashmap ie. {item_id: position}
-        clicked_items: ChunkWithPosition,
+        clicked_items: Option<ChunkWithPosition>,
         /// The user id of the user who clicked the items
         user_id: Option<String>,
         /// Whether the event is a conversion event
@@ -7295,10 +7405,10 @@ impl From<CTRDataRequestBody> for EventTypes {
                 request_type: data.ctr_type,
                 request_id: data.request_id,
             }),
-            clicked_items: ChunkWithPosition {
+            clicked_items: Some(ChunkWithPosition {
                 chunk_id: data.clicked_chunk_id.unwrap_or_default(),
                 position: data.position,
-            },
+            }),
             user_id: None,
             is_conversion: None,
         }
@@ -7833,6 +7943,9 @@ impl<'de> Deserialize<'de> for CreateMessageReqPayload {
             pub only_include_docs_used: Option<bool>,
             #[serde(flatten)]
             other: std::collections::HashMap<String, serde_json::Value>,
+            use_quote_negated_terms: Option<bool>,
+            remove_stop_words: Option<bool>,
+            typo_options: Option<TypoOptions>,
         }
 
         let mut helper = Helper::deserialize(deserializer)?;
@@ -7867,6 +7980,9 @@ impl<'de> Deserialize<'de> for CreateMessageReqPayload {
             context_options,
             no_result_message: helper.no_result_message,
             only_include_docs_used: helper.only_include_docs_used,
+            use_quote_negated_terms: helper.use_quote_negated_terms,
+            remove_stop_words: helper.remove_stop_words,
+            typo_options: helper.typo_options,
         })
     }
 }
@@ -7895,6 +8011,9 @@ impl<'de> Deserialize<'de> for RegenerateMessageReqPayload {
             pub only_include_docs_used: Option<bool>,
             #[serde(flatten)]
             other: std::collections::HashMap<String, serde_json::Value>,
+            pub use_quote_negated_terms: Option<bool>,
+            pub remove_stop_words: Option<bool>,
+            pub typo_options: Option<TypoOptions>,
         }
 
         let mut helper = Helper::deserialize(deserializer)?;
@@ -7926,6 +8045,9 @@ impl<'de> Deserialize<'de> for RegenerateMessageReqPayload {
             context_options,
             no_result_message: helper.no_result_message,
             only_include_docs_used: helper.only_include_docs_used,
+            use_quote_negated_terms: helper.use_quote_negated_terms,
+            remove_stop_words: helper.remove_stop_words,
+            typo_options: helper.typo_options,
         })
     }
 }
@@ -7958,6 +8080,9 @@ impl<'de> Deserialize<'de> for EditMessageReqPayload {
             pub only_include_docs_used: Option<bool>,
             #[serde(flatten)]
             other: std::collections::HashMap<String, serde_json::Value>,
+            pub use_quote_negated_terms: Option<bool>,
+            pub remove_stop_words: Option<bool>,
+            pub typo_options: Option<TypoOptions>,
         }
 
         let mut helper = Helper::deserialize(deserializer)?;
@@ -7993,6 +8118,9 @@ impl<'de> Deserialize<'de> for EditMessageReqPayload {
             context_options,
             no_result_message: helper.no_result_message,
             only_include_docs_used: helper.only_include_docs_used,
+            use_quote_negated_terms: helper.use_quote_negated_terms,
+            remove_stop_words: helper.remove_stop_words,
+            typo_options: helper.typo_options,
         })
     }
 }

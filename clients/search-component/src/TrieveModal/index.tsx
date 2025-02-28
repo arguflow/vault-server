@@ -16,6 +16,61 @@ import { FloatingActionButton } from "./FloatingActionButton";
 import { FloatingSearchIcon } from "./FloatingSearchIcon";
 import { FloatingSearchInput } from "./FloatingSearchInput";
 import { ModalContainer } from "./ModalContainer";
+import {
+  Accordion,
+  ActiveFilterPills,
+  FilterButton,
+  InferenceFiltersForm,
+} from "./FilterSidebarComponents";
+
+const SearchPage = () => {
+  const { props } = useModalState();
+  if (!props.searchPageProps?.display) return null;
+
+  return (
+    <div
+      className="trieve-search-page"
+      data-display={props.searchPageProps?.display ? "true" : "false"}
+    >
+      <div className="trieve-search-subheader-w-full">
+        <ActiveFilterPills />
+      </div>
+      <div className="trieve-search-page-main-section">
+        <div className="trieve-filter-bar-section">
+          <div className="trieve-filter-sidebar">
+            {props.searchPageProps?.filterSidebarProps?.sections.map(
+              (section) => (
+                <Accordion
+                  sectionKey={section.key}
+                  title={section.title}
+                  key={section.key}
+                >
+                  {section.options.map((option) => (
+                    <FilterButton
+                      sectionKey={section.key}
+                      label={option.label ?? ""}
+                      description={option.description}
+                      type={section.selectionType}
+                      filterKey={option.tag}
+                      key={option.tag}
+                    />
+                  ))}
+                </Accordion>
+              )
+            )}
+          </div>
+        </div>
+        <div className="trieve-filter-main-section">
+          <InferenceFiltersForm
+            steps={
+              props.searchPageProps?.inferenceFiltersFormProps?.steps ?? []
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Modal = () => {
   useKeyboardNavigation();
@@ -123,6 +178,14 @@ const Modal = () => {
     }
   }, []);
 
+  const closeModalListener: EventListener = useCallback(() => {
+    try {
+      setOpen(false);
+    } catch (e) {
+      console.log("error on event listener for closing modal", e);
+    }
+  }, []);
+
   const openModalListener: EventListener = useCallback(() => {
     try {
       const defaultMode = props.defaultSearchMode || "search";
@@ -161,6 +224,8 @@ const Modal = () => {
       window.addEventListener("trieve-open-with-text", openWithTextListener);
 
       window.addEventListener("trieve-open-modal", openModalListener);
+
+      window.addEventListener("trieve-close-modal", closeModalListener);
     }
 
     return () => {
@@ -176,10 +241,53 @@ const Modal = () => {
           "trieve-open-with-text",
           openWithTextListener
         );
+
+        window.addEventListener("trieve-close-modal", closeModalListener);
       }
     };
   }, []);
 
+  return (
+    <>
+      {!props.inline && !props.hideOpenButton && (
+        <OpenModalButton
+          setOpen={() => {
+            startTransition(() => {
+              setOpen(true);
+              setMode(props.defaultSearchMode || "search");
+            });
+          }}
+        />
+      )}
+      <>
+        {!props.inline && !props.hideOverlay && open && (
+          <div
+            onClick={() => {
+              setOpen(false);
+            }}
+            id="trieve-search-modal-overlay"
+            className="tv-bg-black/60 tv-w-screen tv-fixed tv-inset-0 tv-h-screen tv-animate-overlayShow tv-backdrop-blur-sm tv-block"
+            style={{ zIndex: props.zIndex ?? 1000 }}
+          ></div>
+        )}
+        {(props.displayModal ?? true) && <ModalContainer />}
+      </>
+      {props.showFloatingSearchIcon && <FloatingSearchIcon />}
+      {props.showFloatingButton && <FloatingActionButton />}
+      {props.showFloatingInput && <FloatingSearchInput />}
+    </>
+  );
+};
+
+export const initTrieveModalSearch = (props: ModalProps) => {
+  const ModalSearchWC = r2wc(() => <TrieveModalSearch {...props} />);
+
+  if (!customElements.get("trieve-modal-search")) {
+    customElements.define("trieve-modal-search", ModalSearchWC);
+  }
+};
+
+export const TrieveModalSearch = (props: ModalProps) => {
   useEffect(() => {
     document.documentElement.style.setProperty(
       "--tv-prop-brand-color",
@@ -207,52 +315,10 @@ const Modal = () => {
   }, [props.brandColor, props.brandFontFamily]);
 
   return (
-    <>
-      {!props.inline && !props.hideOpenButton && (
-        <OpenModalButton
-          setOpen={() => {
-            startTransition(() => {
-              setOpen(true);
-              setMode(props.defaultSearchMode || "search");
-            });
-          }}
-        />
-      )}
-      {(props.inline || open) && (
-        <>
-          {!props.inline && props.modalPosition == "center" && (
-            <div
-              onClick={() => {
-                setOpen(false);
-              }}
-              id="trieve-search-modal-overlay"
-              className="tv-bg-black/60 tv-w-screen tv-fixed tv-inset-0 tv-h-screen tv-animate-overlayShow tv-backdrop-blur-sm tv-block"
-              style={{ zIndex: props.zIndex ?? 1000 }}
-            ></div>
-          )}
-          <ModalContainer />
-        </>
-      )}
-      {props.showFloatingSearchIcon && !props.open && <FloatingSearchIcon />}
-      {props.showFloatingButton && <FloatingActionButton />}
-      {props.showFloatingInput && <FloatingSearchInput />}
-    </>
-  );
-};
-
-export const initTrieveModalSearch = (props: ModalProps) => {
-  const ModalSearchWC = r2wc(() => <TrieveModalSearch {...props} />);
-
-  if (!customElements.get("trieve-modal-search")) {
-    customElements.define("trieve-modal-search", ModalSearchWC);
-  }
-};
-
-export const TrieveModalSearch = (props: ModalProps) => {
-  return (
     <ModalProvider onLoadProps={props}>
       <ChatProvider>
         <Modal />
+        <SearchPage />
       </ChatProvider>
     </ModalProvider>
   );

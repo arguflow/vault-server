@@ -1,49 +1,38 @@
 use super::{
     auth_handler::{AdminOnly, LoggedUser},
-    chunk_handler::{ChunkFilter, SearchChunksReqPayload},
+    chunk_handler::ChunkFilter,
 };
 use crate::{
     data::models::{
-        self, ChunkMetadata, ChunkMetadataStringTagSet, ChunkMetadataTypes, ContextOptions,
-        DatasetAndOrgWithSubAndPlan, DatasetConfiguration, HighlightOptions, LLMOptions, Pool,
-        QdrantChunkMetadata, RedisPool, SearchMethod, SortOptions, SuggestType,
+        self, ContextOptions, DatasetAndOrgWithSubAndPlan, DatasetConfiguration, HighlightOptions,
+        LLMOptions, Pool, RedisPool, SearchMethod, SortOptions, SuggestType, TypoOptions,
     },
     errors::ServiceError,
     get_env,
     operators::{
-        chunk_operator::{get_chunk_metadatas_from_point_ids, get_random_chunk_metadatas_query},
         clickhouse_operator::EventQueue,
         message_operator::{
             create_topic_message_query, delete_message_query, get_message_by_id_query,
             get_message_by_sort_for_topic_query, get_messages_for_topic_query, get_text_from_audio,
-            get_topic_messages_query, stream_response,
+            get_topic_messages_query, stream_response, suggested_followp_questions,
+            suggested_new_queries,
         },
         organization_operator::get_message_org_count,
-        parse_operator::convert_html_to_text,
-        qdrant_operator::scroll_dataset_points,
-        search_operator::{
-            assemble_qdrant_filter, search_chunks_query, search_hybrid_chunks, ParsedQuery,
-            ParsedQueryTypes,
-        },
     },
 };
 use actix_web::{web, HttpResponse};
 #[cfg(feature = "hallucination-detection")]
 use hallucination_detection::HallucinationDetector;
-use itertools::Itertools;
 use openai_dive::v1::{
     api::Client,
     resources::chat::{
-        ChatCompletionChoice, ChatCompletionFunction, ChatCompletionParameters,
-        ChatCompletionParametersBuilder, ChatCompletionTool, ChatCompletionToolType, ChatMessage,
-        ChatMessageContent, ChatMessageContentPart, ChatMessageImageContentPart,
-        ChatMessageTextContentPart, ImageUrlType,
+        ChatCompletionFunction, ChatCompletionParametersBuilder, ChatCompletionTool,
+        ChatCompletionToolType, ChatMessage, ChatMessageContent, ChatMessageContentPart,
+        ChatMessageImageContentPart, ChatMessageTextContentPart, ImageUrlType,
     },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use simple_server_timing_header::Timer;
-use simsearch::SimSearch;
 use utoipa::ToSchema;
 
 pub fn check_completion_param_validity(
@@ -98,24 +87,10 @@ pub struct CreateMessageReqPayload {
     pub topic_id: uuid::Uuid,
     /// The user_id is the id of the user who is making the request. This is used to track user interactions with the RAG results.
     pub user_id: Option<String>,
-    /// Highlight Options lets you specify different methods to highlight the chunks in the result set. If not specified, this defaults to the score of the chunks.
-    pub highlight_options: Option<HighlightOptions>,
-    /// Search_type can be either "semantic", "fulltext", or "hybrid". "hybrid" will pull in one page (10 chunks) of both semantic and full-text results then re-rank them using scores from a cross encoder model. "semantic" will pull in one page (10 chunks) of the nearest cosine distant vectors. "fulltext" will pull in one page (10 chunks) of full-text results based on SPLADE. Default is "hybrid".
-    pub search_type: Option<SearchMethod>,
     /// If use_group_search is set to true, the search will be conducted using the `search_over_groups` api. If not specified, this defaults to false.
     pub use_group_search: Option<bool>,
     /// If concat user messages query is set to true, all of the user messages in the topic will be concatenated together and used as the search query. If not specified, this defaults to false. Default is false.
     pub concat_user_messages_query: Option<bool>,
-    /// Query is the search query. This can be any string. The search_query will be used to create a dense embedding vector and/or sparse vector which will be used to find the result set. If not specified, will default to the last user message or HyDE if HyDE is enabled in the dataset configuration. Default is None.
-    pub search_query: Option<String>,
-    /// Page size is the number of chunks to fetch during RAG. If 0, then no search will be performed. If specified, this will override the N retrievals to include in the dataset configuration. Default is None.
-    pub page_size: Option<u64>,
-    /// Sort Options lets you specify different methods to rerank the chunks in the result set. If not specified, this defaults to the score of the chunks.
-    pub sort_options: Option<SortOptions>,
-    /// Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
-    pub score_threshold: Option<f32>,
-    /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
-    pub filters: Option<ChunkFilter>,
     /// LLM options to use for the completion. If not specified, this defaults to the dataset's LLM options.
     pub llm_options: Option<LLMOptions>,
     /// Context options to use for the completion. If not specified, all options will default to false.
@@ -124,6 +99,26 @@ pub struct CreateMessageReqPayload {
     pub no_result_message: Option<String>,
     /// Only include docs used in the completion. If not specified, this defaults to false.
     pub only_include_docs_used: Option<bool>,
+    /// Search_type can be either "semantic", "fulltext", or "hybrid". "hybrid" will pull in one page (10 chunks) of both semantic and full-text results then re-rank them using scores from a cross encoder model. "semantic" will pull in one page (10 chunks) of the nearest cosine distant vectors. "fulltext" will pull in one page (10 chunks) of full-text results based on SPLADE. Default is "hybrid".
+    pub search_type: Option<SearchMethod>,
+    /// Query is the search query. This can be any string. The search_query will be used to create a dense embedding vector and/or sparse vector which will be used to find the result set. If not specified, will default to the last user message or HyDE if HyDE is enabled in the dataset configuration. Default is None.
+    pub search_query: Option<String>,
+    /// Page size is the number of chunks to fetch during RAG. If 0, then no search will be performed. If specified, this will override the N retrievals to include in the dataset configuration. Default is None.
+    pub page_size: Option<u64>,
+    /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
+    pub filters: Option<ChunkFilter>,
+    /// Sort Options lets you specify different methods to rerank the chunks in the result set. If not specified, this defaults to the score of the chunks.
+    pub sort_options: Option<SortOptions>,
+    /// Highlight Options lets you specify different methods to highlight the chunks in the result set. If not specified, this defaults to the score of the chunks.
+    pub highlight_options: Option<HighlightOptions>,
+    /// Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
+    pub score_threshold: Option<f32>,
+    /// If true, quoted and - prefixed words will be parsed from the queries and used as required and negated words respectively. Default is false.
+    pub use_quote_negated_terms: Option<bool>,
+    /// If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. Queries that are entirely stop words will be preserved.
+    pub remove_stop_words: Option<bool>,
+    /// Typo options lets you specify different methods to handle typos in the search query. If not specified, this defaults to no typo handling.
+    pub typo_options: Option<TypoOptions>,
 }
 
 /// Create message
@@ -371,24 +366,10 @@ pub async fn get_message_by_id(
 pub struct RegenerateMessageReqPayload {
     /// The id of the topic to regenerate the last message for.
     pub topic_id: uuid::Uuid,
-    /// Highlight Options lets you specify different methods to highlight the chunks in the result set. If not specified, this defaults to the score of the chunks.
-    pub highlight_options: Option<HighlightOptions>,
-    /// Search_type can be either "semantic", "fulltext", or "hybrid". "hybrid" will pull in one page (10 chunks) of both semantic and full-text results then re-rank them using scores from a cross encoder model. "semantic" will pull in one page (10 chunks) of the nearest cosine distant vectors. "fulltext" will pull in one page (10 chunks) of full-text results based on SPLADE.
-    pub search_type: Option<SearchMethod>,
     /// If use_group_search is set to true, the search will be conducted using the `search_over_groups` api. If not specified, this defaults to false.
     pub use_group_search: Option<bool>,
     /// If concat user messages query is set to true, all of the user messages in the topic will be concatenated together and used as the search query. If not specified, this defaults to false. Default is false.
     pub concat_user_messages_query: Option<bool>,
-    /// Query is the search query. This can be any string. The search_query will be used to create a dense embedding vector and/or sparse vector which will be used to find the result set. If not specified, will default to the last user message or HyDE if HyDE is enabled in the dataset configuration. Default is None.
-    pub search_query: Option<String>,
-    /// Page size is the number of chunks to fetch during RAG. If 0, then no search will be performed. If specified, this will override the N retrievals to include in the dataset configuration. Default is None.
-    pub page_size: Option<u64>,
-    /// Sort Options lets you specify different methods to rerank the chunks in the result set. If not specified, this defaults to the score of the chunks.
-    pub sort_options: Option<SortOptions>,
-    /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
-    pub filters: Option<ChunkFilter>,
-    /// Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
-    pub score_threshold: Option<f32>,
     /// LLM options to use for the completion. If not specified, this defaults to the dataset's LLM options.
     pub llm_options: Option<LLMOptions>,
     /// The user_id is the id of the user who is making the request. This is used to track user interactions with the RAG results.
@@ -399,6 +380,26 @@ pub struct RegenerateMessageReqPayload {
     pub no_result_message: Option<String>,
     /// Only include docs used in the completion. If not specified, this defaults to false.
     pub only_include_docs_used: Option<bool>,
+    /// Search_type can be either "semantic", "fulltext", or "hybrid". "hybrid" will pull in one page (10 chunks) of both semantic and full-text results then re-rank them using scores from a cross encoder model. "semantic" will pull in one page (10 chunks) of the nearest cosine distant vectors. "fulltext" will pull in one page (10 chunks) of full-text results based on SPLADE. Default is "hybrid".
+    pub search_type: Option<SearchMethod>,
+    /// Query is the search query. This can be any string. The search_query will be used to create a dense embedding vector and/or sparse vector which will be used to find the result set. If not specified, will default to the last user message or HyDE if HyDE is enabled in the dataset configuration. Default is None.
+    pub search_query: Option<String>,
+    /// Page size is the number of chunks to fetch during RAG. If 0, then no search will be performed. If specified, this will override the N retrievals to include in the dataset configuration. Default is None.
+    pub page_size: Option<u64>,
+    /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
+    pub filters: Option<ChunkFilter>,
+    /// Sort Options lets you specify different methods to rerank the chunks in the result set. If not specified, this defaults to the score of the chunks.
+    pub sort_options: Option<SortOptions>,
+    /// Highlight Options lets you specify different methods to highlight the chunks in the result set. If not specified, this defaults to the score of the chunks.
+    pub highlight_options: Option<HighlightOptions>,
+    /// Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
+    pub score_threshold: Option<f32>,
+    /// If true, quoted and - prefixed words will be parsed from the queries and used as required and negated words respectively. Default is false.
+    pub use_quote_negated_terms: Option<bool>,
+    /// If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. Queries that are entirely stop words will be preserved.
+    pub remove_stop_words: Option<bool>,
+    /// Typo options lets you specify different methods to handle typos in the search query. If not specified, this defaults to no typo handling.
+    pub typo_options: Option<TypoOptions>,
 }
 
 #[derive(Serialize, Debug, ToSchema)]
@@ -413,24 +414,10 @@ pub struct EditMessageReqPayload {
     pub audio_input: Option<String>,
     /// The URL of the image(s) to attach to the message.
     pub image_urls: Option<Vec<String>>,
-    /// Highlight Options lets you specify different methods to highlight the chunks in the result set. If not specified, this defaults to the score of the chunks.
-    pub highlight_options: Option<HighlightOptions>,
-    /// Search_type can be either "semantic", "fulltext", or "hybrid". "hybrid" will pull in one page (10 chunks) of both semantic and full-text results then re-rank them using scores from a cross encoder model. "semantic" will pull in one page (10 chunks) of the nearest cosine distant vectors. "fulltext" will pull in one page (10 chunks) of full-text results based on SPLADE.
-    pub search_type: Option<SearchMethod>,
     // If use_group_search is set to true, the search will be conducted using the `search_over_groups` api. If not specified, this defaults to false.
     pub use_group_search: Option<bool>,
     /// If concat user messages query is set to true, all of the user messages in the topic will be concatenated together and used as the search query. If not specified, this defaults to false. Default is false.
     pub concat_user_messages_query: Option<bool>,
-    /// Query is the search query. This can be any string. The search_query will be used to create a dense embedding vector and/or sparse vector which will be used to find the result set. If not specified, will default to the last user message or HyDE if HyDE is enabled in the dataset configuration. Default is None.
-    pub search_query: Option<String>,
-    /// Sort Options lets you specify different methods to rerank the chunks in the result set. If not specified, this defaults to the score of the chunks.
-    pub sort_options: Option<SortOptions>,
-    /// Page size is the number of chunks to fetch during RAG. If 0, then no search will be performed. If specified, this will override the N retrievals to include in the dataset configuration. Default is None.
-    pub page_size: Option<u64>,
-    /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
-    pub filters: Option<ChunkFilter>,
-    /// Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
-    pub score_threshold: Option<f32>,
     /// LLM options to use for the completion. If not specified, this defaults to the dataset's LLM options.
     pub llm_options: Option<LLMOptions>,
     /// The user_id is the id of the user who is making the request. This is used to track user interactions with the RAG results.
@@ -441,6 +428,26 @@ pub struct EditMessageReqPayload {
     pub no_result_message: Option<String>,
     /// Only include docs used in the completion. If not specified, this defaults to false.
     pub only_include_docs_used: Option<bool>,
+    /// Search_type can be either "semantic", "fulltext", or "hybrid". "hybrid" will pull in one page (10 chunks) of both semantic and full-text results then re-rank them using scores from a cross encoder model. "semantic" will pull in one page (10 chunks) of the nearest cosine distant vectors. "fulltext" will pull in one page (10 chunks) of full-text results based on SPLADE. Default is "hybrid".
+    pub search_type: Option<SearchMethod>,
+    /// Query is the search query. This can be any string. The search_query will be used to create a dense embedding vector and/or sparse vector which will be used to find the result set. If not specified, will default to the last user message or HyDE if HyDE is enabled in the dataset configuration. Default is None.
+    pub search_query: Option<String>,
+    /// Page size is the number of chunks to fetch during RAG. If 0, then no search will be performed. If specified, this will override the N retrievals to include in the dataset configuration. Default is None.
+    pub page_size: Option<u64>,
+    /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
+    pub filters: Option<ChunkFilter>,
+    /// Sort Options lets you specify different methods to rerank the chunks in the result set. If not specified, this defaults to the score of the chunks.
+    pub sort_options: Option<SortOptions>,
+    /// Highlight Options lets you specify different methods to highlight the chunks in the result set. If not specified, this defaults to the score of the chunks.
+    pub highlight_options: Option<HighlightOptions>,
+    /// Set score_threshold to a float to filter out chunks with a score below the threshold. This threshold applies before weight and bias modifications. If not specified, this defaults to 0.0.
+    pub score_threshold: Option<f32>,
+    /// If true, quoted and - prefixed words will be parsed from the queries and used as required and negated words respectively. Default is false.
+    pub use_quote_negated_terms: Option<bool>,
+    /// If true, stop words (specified in server/src/stop-words.txt in the git repo) will be removed. Queries that are entirely stop words will be preserved.
+    pub remove_stop_words: Option<bool>,
+    /// Typo options lets you specify different methods to handle typos in the search query. If not specified, this defaults to no typo handling.
+    pub typo_options: Option<TypoOptions>,
 }
 
 impl From<EditMessageReqPayload> for CreateMessageReqPayload {
@@ -464,6 +471,9 @@ impl From<EditMessageReqPayload> for CreateMessageReqPayload {
             context_options: data.context_options,
             no_result_message: data.no_result_message,
             only_include_docs_used: data.only_include_docs_used,
+            use_quote_negated_terms: data.use_quote_negated_terms,
+            remove_stop_words: data.remove_stop_words,
+            typo_options: data.typo_options,
         }
     }
 }
@@ -489,6 +499,9 @@ impl From<RegenerateMessageReqPayload> for CreateMessageReqPayload {
             context_options: data.context_options,
             no_result_message: data.no_result_message,
             only_include_docs_used: data.only_include_docs_used,
+            use_quote_negated_terms: data.use_quote_negated_terms,
+            remove_stop_words: data.remove_stop_words,
+            typo_options: data.typo_options,
         }
     }
 }
@@ -784,6 +797,8 @@ pub struct SuggestedQueriesReqPayload {
     pub context: Option<String>,
     /// Filters is a JSON object which can be used to filter chunks. This is useful for when you want to filter chunks by arbitrary metadata. Unlike with tag filtering, there is a performance hit for filtering on metadata.
     pub filters: Option<ChunkFilter>,
+
+    pub is_followup: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, ToSchema)]
@@ -819,312 +834,15 @@ pub async fn get_suggested_queries(
     redis_pool: web::Data<RedisPool>,
     _required_user: LoggedUser,
 ) -> Result<HttpResponse, ServiceError> {
-    let dataset_id = dataset_org_plan_sub.dataset.id;
-    let dataset_config =
-        DatasetConfiguration::from_json(dataset_org_plan_sub.dataset.clone().server_configuration);
+    let queries = if data.is_followup.unwrap_or(false) {
+        let dataset_config = DatasetConfiguration::from_json(
+            dataset_org_plan_sub.dataset.clone().server_configuration,
+        );
 
-    let base_url = dataset_config.LLM_BASE_URL.clone();
-    let default_model = dataset_config.LLM_DEFAULT_MODEL.clone();
-    let qdrant_only = dataset_config.QDRANT_ONLY;
-
-    let base_url = if base_url.is_empty() {
-        "https://api.openai.com/api/v1".into()
+        suggested_followp_questions(data.into_inner(), dataset_config).await?
     } else {
-        base_url
+        suggested_new_queries(data.into_inner(), dataset_org_plan_sub, pool, redis_pool).await?
     };
-
-    let llm_api_key = if !dataset_config.LLM_API_KEY.is_empty() {
-        dataset_config.LLM_API_KEY.clone()
-    } else if base_url.contains("openai.com") {
-        get_env!("OPENAI_API_KEY", "OPENAI_API_KEY for openai should be set").into()
-    } else {
-        get_env!(
-            "LLM_API_KEY",
-            "LLM_API_KEY for openrouter or self-hosted should be set"
-        )
-        .into()
-    };
-    let search_type = data.search_type.clone().unwrap_or(SearchMethod::Hybrid);
-    let filters = data.filters.clone();
-
-    let chunk_metadatas = match data.query.clone() {
-        Some(query) => {
-            let search_req_payload = SearchChunksReqPayload {
-                search_type: search_type.clone(),
-                query: models::QueryTypes::Single(models::SearchModalities::Text(query.clone())),
-                page_size: Some(10),
-                filters,
-                ..Default::default()
-            };
-            let parsed_query = ParsedQuery {
-                query,
-                quote_words: None,
-                negated_words: None,
-            };
-            match search_type {
-                SearchMethod::Hybrid => search_hybrid_chunks(
-                    search_req_payload,
-                    parsed_query,
-                    pool,
-                    redis_pool,
-                    dataset_org_plan_sub.dataset.clone(),
-                    &dataset_config,
-                    &mut Timer::new(),
-                )
-                .await
-                .map_err(|err| ServiceError::BadRequest(err.to_string()))?,
-                _ => search_chunks_query(
-                    search_req_payload,
-                    ParsedQueryTypes::Single(parsed_query),
-                    pool,
-                    redis_pool,
-                    dataset_org_plan_sub.dataset.clone(),
-                    &dataset_config,
-                    &mut Timer::new(),
-                )
-                .await
-                .map_err(|err| ServiceError::BadRequest(err.to_string()))?,
-            }
-            .score_chunks
-            .into_iter()
-            .filter_map(|chunk| chunk.metadata.clone().first().cloned())
-            .map(ChunkMetadata::from)
-            .collect::<Vec<ChunkMetadata>>()
-        }
-        None => {
-            let random_chunk = get_random_chunk_metadatas_query(dataset_id, 1, pool.clone())
-                .await?
-                .clone()
-                .first()
-                .cloned();
-            match random_chunk {
-                Some(chunk) => {
-                    let filter =
-                        assemble_qdrant_filter(filters, None, None, dataset_id, pool.clone())
-                            .await?;
-
-                    let (search_results, _) = scroll_dataset_points(
-                        10,
-                        Some(chunk.qdrant_point_id),
-                        None,
-                        dataset_config,
-                        filter,
-                    )
-                    .await?;
-                    if qdrant_only {
-                        search_results
-                            .iter()
-                            .map(|search_result| {
-                                ChunkMetadata::from(ChunkMetadataTypes::Metadata(
-                                    ChunkMetadataStringTagSet::from(QdrantChunkMetadata::from(
-                                        search_result.clone(),
-                                    )),
-                                ))
-                            })
-                            .collect()
-                    } else {
-                        let qdrant_point_ids: Vec<uuid::Uuid> = search_results
-                            .iter()
-                            .map(|search_result| search_result.point_id)
-                            .collect();
-                        get_chunk_metadatas_from_point_ids(qdrant_point_ids.clone(), pool)
-                            .await?
-                            .into_iter()
-                            .map(ChunkMetadata::from)
-                            .collect()
-                    }
-                }
-                None => vec![],
-            }
-        }
-    };
-
-    let rag_content = chunk_metadatas
-        .iter()
-        .enumerate()
-        .map(|(idx, chunk)| {
-            format!(
-                "Doc {}: {}",
-                idx + 1,
-                convert_html_to_text(&(chunk.chunk_html.clone().unwrap_or_default()))
-            )
-        })
-        .collect::<Vec<String>>()
-        .join("\n\n");
-
-    let query_style = match data.suggestion_type.clone().unwrap_or(SuggestType::Keyword) {
-        SuggestType::Question => "question",
-        SuggestType::Keyword => "keyword",
-        SuggestType::Semantic => "semantic while not question",
-    };
-    let context_sentence = match data.context.clone() {
-        Some(context) => {
-            format!(
-                "\n\nSuggest varied {query_style} queries with the following context in mind: {}.\n\n",
-                context
-            )
-        }
-        None => "".to_string(),
-    };
-
-    let number_of_suggestions_to_create = data.suggestions_to_create.unwrap_or(10);
-
-    let content = ChatMessageContent::Text(format!(
-        "Here is some content which the user might be looking for: {}{}. Generate {} varied followup {} style queries based off the domain of this dataset. Your only response should be the {} followup {} style queries which are separated by new lines and are just text and you do not add any other context or information about the followup {} style queries. This should not be a list, so do not number each {} style queries.",
-        rag_content,
-        context_sentence,
-        number_of_suggestions_to_create,
-        query_style,
-	    number_of_suggestions_to_create,
-        query_style,
-        query_style,
-        query_style,
-    ));
-
-    let message = ChatMessage::User {
-        content,
-        name: None,
-    };
-
-    let parameters = ChatCompletionParameters {
-        model: default_model,
-        messages: vec![message],
-        stream: Some(false),
-        temperature: None,
-        top_p: None,
-        n: None,
-        stop: None,
-        max_completion_tokens: None,
-        presence_penalty: Some(0.8),
-        frequency_penalty: Some(0.8),
-        logit_bias: None,
-        user: None,
-        response_format: None,
-        tools: None,
-        tool_choice: None,
-        logprobs: None,
-        top_logprobs: None,
-        seed: None,
-        ..Default::default()
-    };
-
-    let client = Client {
-        headers: None,
-        project: None,
-        api_key: llm_api_key,
-        http_client: reqwest::Client::new(),
-        base_url,
-        organization: None,
-    };
-
-    let mut query = client
-        .chat()
-        .create(parameters.clone())
-        .await
-        .map_err(|err| ServiceError::BadRequest(err.to_string()))?;
-
-    let mut queries: Vec<String> = match &query
-        .choices
-        .first()
-        .unwrap_or(&ChatCompletionChoice {
-            logprobs: None,
-            index: 0,
-            message: ChatMessage::User {
-                content: ChatMessageContent::Text("".to_string()),
-                name: None,
-            },
-            finish_reason: None,
-        })
-        .message
-    {
-        ChatMessage::User {
-            content: ChatMessageContent::Text(content),
-            ..
-        }
-        | ChatMessage::System {
-            content: ChatMessageContent::Text(content),
-            ..
-        }
-        | ChatMessage::Assistant {
-            content: Some(ChatMessageContent::Text(content)),
-            ..
-        } => content.clone(),
-        _ => "".to_string(),
-    }
-    .split('\n')
-    .filter_map(|query| {
-        let cleaned_query = query.to_string().trim().trim_matches('\n').to_string();
-        if cleaned_query.is_empty() {
-            None
-        } else {
-            Some(cleaned_query)
-        }
-    })
-    .map(|query| query.to_string().trim().trim_matches('\n').to_string())
-    .collect();
-
-    while queries.len() < number_of_suggestions_to_create {
-        query = match client.chat().create(parameters.clone()).await {
-            Ok(query) => query,
-            Err(err) => {
-                log::error!(
-                    "Error generating suggested queries when queries are less than 3: {}",
-                    err
-                );
-                return Err(ServiceError::BadRequest(err.to_string()));
-            }
-        };
-        let first_query = match query.choices.first() {
-            Some(first_query) => first_query,
-            None => {
-                log::error!("Error generating suggested queries when queries are less than 3: No first query in choices");
-                return Err(ServiceError::BadRequest(
-                    "No first query in choices on call to LLM".to_string(),
-                ));
-            }
-        };
-        queries = match &first_query.message {
-            ChatMessage::User {
-                content: ChatMessageContent::Text(content),
-                ..
-            }
-            | ChatMessage::System {
-                content: ChatMessageContent::Text(content),
-                ..
-            }
-            | ChatMessage::Assistant {
-                content: Some(ChatMessageContent::Text(content)),
-                ..
-            } => content.clone(),
-            _ => "".to_string(),
-        }
-        .split('\n')
-        .map(|query| query.to_string().trim().trim_matches('\n').to_string())
-        .collect();
-    }
-
-    let mut engine: SimSearch<String> = SimSearch::new();
-
-    chunk_metadatas.iter().for_each(|chunk| {
-        let content = convert_html_to_text(&chunk.chunk_html.clone().unwrap_or_default());
-
-        engine.insert(content.clone(), &content);
-    });
-
-    let sortable_queries = queries
-        .iter()
-        .map(|query| (query, engine.search(query).len()))
-        .collect_vec();
-
-    //search for the query
-    queries = sortable_queries
-        .iter()
-        .sorted_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-        .map(|(content, _length)| content)
-        .take(number_of_suggestions_to_create)
-        .cloned()
-        .cloned()
-        .collect_vec();
 
     Ok(HttpResponse::Ok().json(SuggestedQueriesResponse { queries }))
 }
