@@ -1,7 +1,11 @@
 // Share a TrieveSDK instance and a datset reference between all components
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 import { Dataset, OrganizationWithSubAndPlan, TrieveSDK } from "trieve-ts-sdk";
 import { StrongTrieveKey } from "app/types";
+import { QueryClient } from "@tanstack/react-query";
+import { setQueryClientAndTrieveSDK } from "app/loaders/clientLoader";
+import { shopDatasetQuery } from "app/queries/shopDataset";
+import { scrapeOptionsQuery } from "app/queries/scrapeOptions";
 
 export const TrieveContext = createContext<{
   trieve: TrieveSDK;
@@ -20,11 +24,13 @@ export const TrieveProvider = ({
   trieveKey,
   dataset,
   organization,
+  queryClient,
 }: {
   children: React.ReactNode;
   trieveKey: StrongTrieveKey;
   dataset: Dataset;
   organization: OrganizationWithSubAndPlan;
+  queryClient: QueryClient;
 }) => {
   const trieve = useMemo(
     () =>
@@ -35,8 +41,19 @@ export const TrieveProvider = ({
         organizationId: trieveKey.organizationId,
         omitCredentials: true,
       }),
-    [trieveKey.key, trieveKey.currentDatasetId, trieveKey.organizationId]
+    [trieveKey.key, trieveKey.currentDatasetId, trieveKey.organizationId],
   );
+
+  useEffect(() => {
+    setQueryClientAndTrieveSDK(queryClient, trieve);
+  }, []);
+
+  // Prefetches for everything
+  useEffect(() => {
+    queryClient.prefetchQuery(shopDatasetQuery(trieve));
+    queryClient.prefetchQuery(scrapeOptionsQuery(trieve));
+  }, []);
+
   return (
     <TrieveContext.Provider
       value={{ trieve, dataset, trieveKey, organization }}
