@@ -256,6 +256,23 @@ function ChatProvider({ children }: { children: React.ReactNode }) {
     const curGroup = group || currentGroup;
     let transcribedQuery: string | null = null;
 
+    // This only works w/ shopify rn
+    if (
+      props.recommendOptions &&
+      props.recommendOptions?.queriesToTriggerRecommendations.includes(
+        questionProp ?? ""
+      )
+    ) {
+      const item = await trieveSDK.getChunkByTrackingId({
+        trackingId: props.recommendOptions.productId,
+      });
+      const metadata = item?.metadata as {
+        title: string;
+        variantName: string;
+      };
+      questionProp = `The user wants to find things similar to ${metadata.title} - ${metadata.variantName} and says ${question}. Find me some items that are just like it`;
+    }
+
     // Use group search
     let filters: ChunkFilter | null = {
       must: null,
@@ -271,7 +288,12 @@ function ChatProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    if (curGroup) {
+    if (
+      curGroup &&
+      !props.recommendOptions?.queriesToTriggerRecommendations.includes(
+        question ?? ""
+      )
+    ) {
       if (!filters.should) {
         filters.should = [];
       }
@@ -302,9 +324,39 @@ function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    if (
+      props.recommendOptions?.filter &&
+      props.recommendOptions?.queriesToTriggerRecommendations.includes(
+        question ?? ""
+      )
+    ) {
+      if (props.recommendOptions?.filter.must) {
+        if (!filters.must) {
+          filters.must = [];
+        }
+        filters.must?.push(...props.recommendOptions.filter.must);
+      }
+      if (props.recommendOptions?.filter.must_not) {
+        if (!filters.must_not) {
+          filters.must_not = [];
+        }
+        filters.must_not?.push(...props.recommendOptions.filter.must_not);
+      }
+      if (props.recommendOptions?.filter.should) {
+        if (!filters.should) {
+          filters.should = [];
+        }
+        filters.should?.push(...props.recommendOptions.filter.should);
+      }
+    }
+
     let stoppedGeneratingMessage = false;
 
-    if (!defaultMatchAnyTags && !curGroup && (props.tags?.length ?? 0) > 0) {
+    if (
+      (!defaultMatchAnyTags || !defaultMatchAnyTags?.length) &&
+      !curGroup &&
+      (props.tags?.length ?? 0) > 0
+    ) {
       let filterParamsRetries = 0;
       while (filterParamsRetries < 3) {
         filterParamsRetries++;
@@ -419,11 +471,11 @@ function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (defaultMatchAnyTags) {
-      if (!filters.must) {
-        filters.must = [];
+    if (defaultMatchAnyTags?.length) {
+      if (!filters.should) {
+        filters.should = [];
       }
-      filters.must.push({
+      filters.should.push({
         field: "tag_set",
         match_any: defaultMatchAnyTags,
       });

@@ -227,7 +227,8 @@ body {
 
     .carousel-scroll {
       display: flex;
-      overflow-x: hidden;
+      overflow-x: auto;
+      overflow-y: hidden;
       scroll-snap-type: x-mandatory;
       scroll-behavior: smooth;
       width: 100%;
@@ -553,7 +554,7 @@ body {
       @apply tv-text-sm tv-flex tv-flex-wrap tv-gap-2 tv-mb-4;
 
       .followup-question {
-        @apply tv-p-2 tv-text-left tv-rounded-md tv-border tv-transition-all tv-flex tv-flex-row tv-justify-start tv-items-center tv-gap-2;
+        @apply tv-p-2 tv-text-left tv-rounded-md tv-border tv-border-solid tv-transition-all tv-flex tv-flex-row tv-justify-start tv-items-center tv-gap-2;
         border-color: var(--tv-zinc-200);
 
         .followup-icon {
@@ -578,9 +579,10 @@ body {
       @apply tv-text-sm tv-flex tv-flex-wrap tv-gap-2 tv-pb-2;
 
       .suggested-question {
-        @apply tv-p-2 tv-text-left tv-rounded-md tv-border tv-transition-all;
-        border-color: var(--tv-zinc-200);
-
+        @apply tv-p-2 tv-text-left tv-rounded-md tv-border tv-transition-all tv-border-solid;
+        border-color: var(--tv-zinc-200) !important;
+        border: 1px solid var(--tv-zinc-200);
+        
         &:hover {
           background-color: var(--tv-zinc-200);
         }

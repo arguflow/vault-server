@@ -29,6 +29,7 @@ export type DatasetConfig = Exclude<
 type SettingsPage = (args: {
   serverConfig: Accessor<DatasetConfig>;
   setServerConfig: (config: (prev: DatasetConfig) => DatasetConfig) => void;
+  saveConfig?: () => void;
 }) => JSX.Element;
 
 export const LegacySettingsWrapper = (props: { page: SettingsPage }) => {
@@ -178,6 +179,7 @@ export const LegacySettingsWrapper = (props: { page: SettingsPage }) => {
           {props.page({
             serverConfig: serverConfig,
             setServerConfig: setServerConfig,
+            saveConfig: onSave,
           })}
         </div>
         <button
