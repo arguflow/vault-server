@@ -5,22 +5,14 @@ metadata:
 data:
   ADMIN_API_KEY: {{ .Values.config.trieve.adminApiKey }}
   BASE_SERVER_URL: {{ .Values.config.trieve.baseServerUrl }}
-  REDIS_URL: {{ .Values.config.redis.uri }}
+  DATABASE_URL: {{ include "trieve.databaseUrl" . | indent 2 }}
+  REDIS_URL: {{ include "trieve.redisUrl" . | indent 2 }}
   QDRANT_URL: {{ .Values.config.qdrant.qdrantUrl }}
   QDRANT_API_KEY: {{ .Values.config.qdrant.apiKey }}
   QUANTIZE_VECTORS: {{ .Values.config.qdrant.quantizeVectors | quote }}
   QDRANT_SHARD_COUNT: {{ .Values.config.qdrant.shardCount | quote }}
   REPLICATION_FACTOR: {{ .Values.config.qdrant.replicationFactor | quote }}
   VECTOR_SIZES: {{ join "," .Values.config.qdrant.vectorSizes | quote }}
-  {{- if $.Values.postgres.dbURI }}
-  DATABASE_URL: {{ .Values.postgres.dbURI }}
-  {{- else if $.Values.postgres.secretKeyRef }}
-  {{- $secretName := .Values.postgres.secretKeyRef.name }}
-  {{- $secretKey := .Values.postgres.secretKeyRef.key }}
-  {{- with (lookup "v1" "Secret" .Release.Namespace $secretName) }}
-  DATABASE_URL: {{ index .data $secretKey | b64dec }}
-  {{- end }}
-  {{- end }}
   {{- if .Values.config.smtp.relay }}
   SMTP_RELAY: {{ .Values.config.smtp.relay }}
   {{- end }}

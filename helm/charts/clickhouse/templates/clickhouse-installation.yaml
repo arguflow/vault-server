@@ -1,0 +1,10 @@
+apiVersion: "clickhouse.altinity.com/v1"
+kind: "ClickHouseInstallation"
+metadata:
+  name: {{ $.Release.Name }}-trieve-clickhouse
+  labels:
+    app.kubernetes.io/name: {{ $.Release.Name }}-trieve-clickhouse
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec: 
+{{ toYaml .Values.clickhouseSpec | indent 2 }}
+

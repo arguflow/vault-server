@@ -1,14 +1,29 @@
 postgres:
+  # Enables Postgres via the subchart
   enabled: true
-  dbURI: "postgres://postgres:password@postgres.default.svc.cluster.local:5432/trieve"
-  spec:
+  # Installs cloudnative-pg operator
+  installCrds: true
+  # Pulls from secret if postgres.enabled = true
+  # dbURI: "postgres://postgres:password@postgres.default.svc.cluster.local:5432/trieve"
+  # This requires installing cloud-native-pg operator https://cloudnative-pg.io/documentation/1.24/installation_upgrade/
+  clusterSpec:
     # CloudNativePg template spec
     instances: 1
     storage:
       size: 10Gi
 
+
 clickhouse:
   enabled: true
+  installCrds: true
+  clickhouseSpec:
+    ## A ClickhouseInstallation template spec
+    configuration:
+      users:
+        # printf 'test_password' | sha256sum
+        test_user/password_sha256_hex: 10a6e6cc8311a3e2bcc09bf6c199adecd5dd59408c343e926b129c4914f3cb01
+      clusters:
+        - name: "simpleee"
 
 minio:
   enabled: true
