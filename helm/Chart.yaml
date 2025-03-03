@@ -13,6 +13,9 @@ dependencies:
     repository: https://charts.bitnami.com/bitnami
     version: 20.10.0
     condition: redis.enabled
+  - name: keycloak
+    version: 0.0.0
+    condition: keycloak.enabled
   - name: clickhouse
     version: 0.0.0
     condition: clickhouse.enabled

@@ -5,5 +5,14 @@ dependencies:
 - name: redis
   repository: https://charts.bitnami.com/bitnami
   version: 20.10.0
-digest: sha256:bb2328107b9bb09fafd2e397e343698416068c2fbee145d460d07300bd370d65
-generated: "2025-03-02T00:04:26.871557271-08:00"
+- name: keycloak
+  repository: ""
+  version: 0.0.0
+- name: clickhouse
+  repository: ""
+  version: 0.0.0
+- name: postgres
+  repository: ""
+  version: 0.0.0
+digest: sha256:494ac7f03d62bcbaac54353c99bbb5f990de1fc31bf35204216f376869c98c1f
+generated: "2025-03-02T21:58:01.746161849-08:00"
