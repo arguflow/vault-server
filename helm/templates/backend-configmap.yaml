@@ -7,8 +7,12 @@ data:
   BASE_SERVER_URL: {{ .Values.config.trieve.baseServerUrl }}
   DATABASE_URL: {{ include "trieve.databaseUrl" . | indent 2 }}
   REDIS_URL: {{ include "trieve.redisUrl" . | indent 2 }}
-  QDRANT_URL: {{ .Values.config.qdrant.qdrantUrl }}
-  QDRANT_API_KEY: {{ .Values.config.qdrant.apiKey }}
+  QDRANT_URL: {{ .Values.qdrant.url }}
+  QDRANT_API_KEY: {{ .Values.qdrant.apiKey }}
+  CLICKHOUSE_URL: {{ .Values.clickhouse.connection.clickhouseUrl | quote }}
+  CLICKHOUSE_DB: {{ .Values.clickhouse.connection.clickhouseDB | quote }}
+  CLICKHOUSE_USER: {{ .Values.clickhouse.connection.clickhouseUser | quote }}
+  CLICKHOUSE_PASSWORD: {{ .Values.clickhouse.connection.clickhousePassword | quote }}
   QUANTIZE_VECTORS: {{ .Values.config.qdrant.quantizeVectors | quote }}
   QDRANT_SHARD_COUNT: {{ .Values.config.qdrant.shardCount | quote }}
   REPLICATION_FACTOR: {{ .Values.config.qdrant.replicationFactor | quote }}
@@ -83,11 +87,7 @@ data:
   RERANKER_SERVER_ORIGIN: {{ .Values.config.trieve.rerankerServerOrigin }}
   UNLIMITED: {{ .Values.config.trieve.unlimited | quote }}
   REDIS_CONNECTIONS: "30"
-  CLICKHOUSE_URL: {{ .Values.config.analytics.clickhouseUrl | quote }}
-  CLICKHOUSE_DB: {{ .Values.config.analytics.clickhouseDB | quote }}
-  CLICKHOUSE_USER: {{ .Values.config.analytics.clickhouseUser | quote }}
-  CLICKHOUSE_PASSWORD: {{ .Values.config.analytics.clickhousePassword | quote }}
-  USE_ANALYTICS: {{ .Values.config.analytics.enabled | quote }}
+  USE_ANALYTICS: "true"
   BM25_ACTIVE: {{ .Values.config.trieve.bm25Active | quote }}
   SUBTRACE_TOKEN: {{ .Values.config.trieve.subtraceToken | quote }}
   FIRECRAWL_URL: {{ .Values.config.trieve.firecrawlUrl | quote }}
