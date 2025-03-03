@@ -1,6 +1,0 @@
-dependencies:
-- name: keycloak-operator
-  repository: https://kbumsik.io/keycloak-kubernetes
-  version: 0.0.4
-digest: sha256:495eecc1b49e60c7a29a60c7ea5855c17545ba27ba92420cd077fef30af19a86
-generated: "2025-03-02T21:53:20.002869811-08:00"

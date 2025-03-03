@@ -24,15 +24,15 @@ keycloak:
   installCrds: true
 
   ingress:
-    host: auth.yourdomain.com
+    host: auth.localtrieve.com
     ingressClassName: nginx
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt"
       nginx.ingress.kubernetes.io/ssl-redirect: "true"
     tls:
       - hosts:
-          - dashboard.yourdomain.com
-        secretName: dashboard-ansear-ai
+          - auth.localtrieve.com
+        secretName: auth-localtrieve-com
 
 clickhouse:
   enabled: true

@@ -1,5 +1,3 @@
-installCrds: true
- 
 ingress:
   # host: auth.yourdomain.com
   # ingressClassName: nginx
